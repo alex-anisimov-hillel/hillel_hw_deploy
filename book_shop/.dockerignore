@@ -1,0 +1,17 @@
+.git
+.venv
+venv
+.idea
+.vscode
+**/__pycache__
+*.pyc
+.pytest_cache
+.coverage
+coverage.xml
+htmlcov
+.env
+.env.*
+!.env.example
+staticfiles
+reports
+docker-compose*.yml
