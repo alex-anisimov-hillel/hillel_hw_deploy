@@ -46,6 +46,9 @@ if "*" in ALLOWED_HOSTS:
 # without TLS.
 SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", True)
 
+# Health checks come from Docker/load balancers over plain HTTP: never redirect.
+SECURE_REDIRECT_EXEMPT = [r"^health/"]
+
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_HTTPONLY = True
@@ -68,6 +71,18 @@ X_FRAME_OPTIONS = "DENY"
 _required("CSRF_TRUSTED_ORIGINS")
 if not all(origin.startswith("https://") for origin in CSRF_TRUSTED_ORIGINS):
     raise ImproperlyConfigured("CSRF_TRUSTED_ORIGINS must all use https://")
+
+# ---------------------------------------------------------------------------
+# Static files (served by WhiteNoise)
+# ---------------------------------------------------------------------------
+# Fingerprinted file names (long-lived cache) + gzip/brotli copies. Requires
+# `collectstatic` to have run; development and tests keep Django's defaults.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Other production hardening

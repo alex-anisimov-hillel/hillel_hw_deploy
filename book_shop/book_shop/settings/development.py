@@ -12,7 +12,12 @@ SECRET_KEY = env_str(
 )
 
 INSTALLED_APPS = [*INSTALLED_APPS, "debug_toolbar"]
-MIDDLEWARE = [*MIDDLEWARE, "debug_toolbar.middleware.DebugToolbarMiddleware"]
+# runserver serves static files itself, so WhiteNoise (which wants a collected
+# STATIC_ROOT) is only active in production.
+MIDDLEWARE = [
+    *(m for m in MIDDLEWARE if not m.startswith("whitenoise.")),
+    "debug_toolbar.middleware.DebugToolbarMiddleware",
+]
 INTERNAL_IPS = ["127.0.0.1"]
 
 # Print e-mails to the console unless an SMTP backend is requested explicitly.

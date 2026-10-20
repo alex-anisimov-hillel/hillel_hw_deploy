@@ -1,5 +1,8 @@
 # Book Shop
 
+[![CI](https://github.com/alex-anisimov-hillel/hillel_hw_deploy/actions/workflows/django.yml/badge.svg?branch=master)](https://github.com/alex-anisimov-hillel/hillel_hw_deploy/actions/workflows/django.yml)
+[![codecov](https://codecov.io/gh/alex-anisimov-hillel/hillel_hw_deploy/branch/master/graph/badge.svg)](https://codecov.io/gh/alex-anisimov-hillel/hillel_hw_deploy)
+
 Django-застосунок інтернет-магазину книг з кошиком на сесіях, оформленням
 замовлень та оплатою через Stripe.
 
@@ -16,7 +19,7 @@ Django-застосунок інтернет-магазину книг з кош
 ## Технології
 
 Django 6.1, Django REST Framework, django-mptt, Stripe, PostgreSQL, Redis,
-Uvicorn (ASGI), Docker / docker-compose, pytest / pytest-django / pytest-factoryboy.
+Gunicorn + Uvicorn worker (ASGI), WhiteNoise, Docker / docker-compose, pytest / pytest-django / pytest-factoryboy.
 
 ## Запуск локально (Docker)
 
@@ -29,6 +32,26 @@ Uvicorn (ASGI), Docker / docker-compose, pytest / pytest-django / pytest-factory
    ```
    Це підніме Postgres, Redis і сам застосунок (застосує міграції автоматично
    через `entrypoint.sh`) на `http://localhost:8000`.
+
+## Gunicorn, статика та health check
+
+- **Gunicorn** (`gunicorn.conf.py`) запускає ASGI-застосунок з воркерами
+  `uvicorn_worker.UvicornWorker`: `gunicorn book_shop.asgi:application -c gunicorn.conf.py`.
+  Налаштовується змінними оточення: `PORT` (8000), `WEB_CONCURRENCY` (3),
+  `GUNICORN_TIMEOUT`, `GUNICORN_MAX_REQUESTS`, `GUNICORN_LOG_LEVEL`.
+- **Статичні файли** віддає **WhiteNoise** (middleware одразу після
+  `SecurityMiddleware`). У production файли хешуються й стискаються
+  (`CompressedManifestStaticFilesStorage`); `collectstatic` виконується під час
+  збірки образу (і в `docker compose`). Nginx лише проксіює запити.
+  У development WhiteNoise вимкнений — статику віддає `runserver`.
+- **Health check**:
+  - `GET /health/` — liveness: процес живий (без звернень до БД/Redis);
+  - `GET /health/ready/` — readiness: перевіряє PostgreSQL і Redis,
+    повертає `503` та назву збійного компонента, якщо щось недоступне.
+
+  Обидва ендпоінти виключені з HTTPS-редіректу (`SECURE_REDIRECT_EXEMPT`), тож
+  працюють для Docker/балансувальника по звичайному HTTP. Хост із запиту
+  (напр. `localhost` для Docker healthcheck) має бути в `DJANGO_ALLOWED_HOSTS`.
 
 ## Тести та coverage
 
@@ -93,11 +116,12 @@ Pipeline — `.github/workflows/django.yml`:
 1. **lint** — `flake8` та `black --check`
 2. **test** — `pytest` + coverage (поріг 70%) на Postgres і Redis; перевірка
    відсутніх міграцій та `check --deploy` для production-налаштувань
-3. **docker** — збірка образу, smoke-тест, push у Docker Hub (лише `main` і теги `v*`;
+3. **docker** — збірка образу, smoke-тест, push у Docker Hub (лише `main`/`master` і теги `v*`;
    у pull request образ тільки збирається)
 
 Потрібні secrets репозиторію (*Settings → Secrets and variables → Actions*):
-`DOCKERHUB_USERNAME` та `DOCKERHUB_TOKEN` (Docker Hub → Account settings →
+`CODECOV_TOKEN` (для badge покриття: [codecov.io](https://codecov.io) → додати
+репозиторій → скопіювати токен), `DOCKERHUB_USERNAME` та `DOCKERHUB_TOKEN` (Docker Hub → Account settings →
 Personal access tokens, права *Read & Write*). Образ: `<username>/book-shop`.
 
 Локально те саме:

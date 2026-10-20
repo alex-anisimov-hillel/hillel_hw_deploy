@@ -2,10 +2,10 @@ name: Django CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
     tags: ["v*"]
   pull_request:
-    branches: [main]
+    branches: [main, master]
   workflow_dispatch:
 
 # A newer run on the same branch/PR cancels the older one.
@@ -121,6 +121,16 @@ jobs:
           --cov-report=html
           --cov-fail-under=70
 
+      # Feeds the coverage badge in README.md. Needs the CODECOV_TOKEN secret;
+      # never fails the build (forks/PRs have no access to secrets).
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: book_shop/coverage.xml
+          fail_ci_if_error: false
+
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v7
@@ -135,9 +145,9 @@ jobs:
     name: Build & push Docker image
     runs-on: ubuntu-latest
     needs: test
-    # Push only from main and version tags; PRs just verify that the image builds.
+    # Push only from main/master and version tags; PRs just verify that the image builds.
     env:
-      PUSH_IMAGE: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+      PUSH_IMAGE: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -177,6 +187,25 @@ jobs:
           -e EMAIL_HOST_PASSWORD=ci
           book-shop:ci
           python manage.py check --deploy --fail-level ERROR
+
+      # Boots the real container command (Gunicorn + Uvicorn worker) and checks
+      # the liveness endpoint and WhiteNoise. Liveness needs no DB/Redis.
+      - name: Smoke test Gunicorn, health check and static files
+        run: |
+          docker run -d --name smoke -p 8000:8000 \
+            -e DJANGO_SECRET_KEY=ci-check-only-0123456789-0123456789-0123456789-0123456789 \
+            -e DJANGO_ALLOWED_HOSTS=localhost \
+            -e CSRF_TRUSTED_ORIGINS=https://localhost \
+            -e EMAIL_HOST_USER=ci -e EMAIL_HOST_PASSWORD=ci \
+            book-shop:ci
+          for i in $(seq 1 30); do
+            curl -fsS -H 'X-Forwarded-Proto: https' http://localhost:8000/health/ && break
+            sleep 1
+          done
+          curl -fsS -H 'X-Forwarded-Proto: https' http://localhost:8000/health/
+          curl -fsSI -H 'X-Forwarded-Proto: https' http://localhost:8000/static/admin/css/base.css
+          docker logs smoke
+          docker rm -f smoke
 
       - name: Log in to Docker Hub
         if: env.PUSH_IMAGE == 'true'

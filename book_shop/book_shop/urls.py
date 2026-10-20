@@ -29,10 +29,14 @@ from rest_framework_simplejwt.views import (
 
 from django.conf import settings
 
+from book_shop import health
+
 router = routers.DefaultRouter()
 
 
 urlpatterns = [
+    path("health/", health.liveness, name="health"),
+    path("health/ready/", health.readiness, name="health-ready"),
     path("", TemplateView.as_view(template_name="home.html"), name="home"),
     path("admin/", admin.site.urls),
     path("i18n/", include("django.conf.urls.i18n"), name="i18n"),
